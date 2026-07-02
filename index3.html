@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<title>家庭厨房大脑</title>
+
+<!-- 移动端 & PWA -->
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="screen-orientation" content="portrait" />
+
+<link rel="manifest" href="manifest.json" />
+<script>
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('service-worker.js');
+}
+</script>
+
+<style>
+/* ===== 全局 ===== */
+html, body {
+    margin: 0;
+    padding: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: #f6f7fb;
+    font-size: 16px;
+    -webkit-text-size-adjust: 100%;
+    -webkit-tap-highlight-color: transparent;
+    padding-bottom: env(safe-area-inset-bottom);
+}
+h1, h2, h3 {
+    text-align: center;
+    margin: 10px 0;
+}
+
+/* ===== 底部导航（手机 App 风格）===== */
+.tabs {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    display: flex;
+    background: #fff;
+    border-top: 1px solid #ddd;
+    z-index: 999;
+    padding-bottom: env(safe-area-inset-bottom);
+}
+.tab {
+    flex: 1;
+    padding: 10px 0;
+    text-align: center;
+    font-size: 14px;
+    color: #666;
+    cursor: pointer;
+}
+.tab.active {
+    color: #4caf50;
+    font-weight: bold;
+}
+
+/* ===== 页面主体 ===== */
+.section {
+    display: none;
+    padding: 10px;
+    padding-bottom: 70px;
+}
+.section.active {
+    display: block;
+}
+.container {
+    max-width: 600px;
+    margin: auto;
+    background: #fff;
+    border-radius: 10px;
+    padding: 15px;
+}
+
+/* ===== 表单 ===== */
+input, select, button {
+    width: 100%;
+    padding: 10px;
+    margin-top: 8px;
+    font-size: 16px;
+    box-sizing: border-box;
+    border-radius: 6px;
+    border: 1px solid #ddd;
+}
+button {
+    background: #4caf50;
+    color: #fff;
+    border: none;
+    cursor: pointer;
+    min-height: 40px;
+}
+
+/* ===== 菜品图集 ===== */
+.gallery {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 10px;
+    margin-top: 10px;
+}
+.card {
+    position: relative;
+    border-radius: 8px;
+    overflow: hidden;
+    background: #eee;
+}
+.card img {
+    width: 100%;
+    height: 100px;
+    object-fit: cover;
+}
+.card .del {
+    position: absolute;
+    top: 5px;
+    right: 5px;
+    background: rgba(0,0,0,.6);
+    color: #fff;
+    border: none;
+    border-radius: 50%;
+    width: 24px;
+    height: 24px;
+}
+
+/* ===== 食材胶囊 ===== */
+.ingredient-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 10px;
+}
+.tag {
+    display: inline-flex;
+    align-items: center;
+    padding: 6px 10px;
+    border-radius: 999px;
+    font-size: 13px;
+    cursor: pointer;
+    white-space: nowrap;
+}
+.tag.selected {
+    outline: 2px solid #4caf50;
+}
+.tag.warning {
+    background: #fff3cd !important;
+    color: #856404 !important;
+}
+.tag.green  { background: #e8f5e9; color: #256029; }
+.tag.red    { background: #fdecea; color: #b71c1c; }
+.tag.gray   { background: #f0f0f0; color: #555; }
+.tag.blue   { background: #e3f2fd; color: #0d47a1; }
+.tag .tag-del {
+    margin-left: 6px;
+    background: transparent;
+    border: none;
+    color: #f44336;
+    font-weight: bold;
+    font-size: 14px;
+}
+
+/* ===== 仪表盘 ===== */
+.dashboard-section {
+    margin-top: 15px;
+    padding-top: 10px;
+    border-top: 1px solid #eee;
+}
+</style>
+</head>
+
+<body>
+
+<h1>🍳 家庭厨房大脑</h1>
+
+<!-- 底部导航 -->
+<div class="tabs">
+    <div class="tab active" onclick="switchTab('dashboard')">首页</div>
+    <div class="tab" onclick="switchTab('dishes')">菜品</div>
+    <div class="tab" onclick="switchTab('ingredients')">食材</div>
+</div>
+
+<!-- 首页仪表盘 -->
+<div id="dashboard" class="section active">
+    <div class="container">
+        <h2>🏠 厨房首页</h2>
+        <div id="menuResult" style="font-weight:bold;font-size:16px;"></div>
+
+        <div class="dashboard-section">
+            <h3>🛒 需要购买的食材</h3>
+            <div id="shoppingList">加载中...</div>
+        </div>
+
+        <div class="dashboard-section">
+            <h3>🍽 最近做过的菜</h3>
+            <div id="recentDishes">加载中...</div>
+        </div>
+    </div>
+</div>
+
+<!-- 菜品图集 -->
+<div id="dishes" class="section">
+    <div class="container">
+        <h2>🍱 菜品图集</h2>
+        <input id="dishName" placeholder="菜品名称" />
+        <select id="dishCategory">
+            <option>家常菜</option>
+            <option>汤品</option>
+            <option>主食</option>
+            <option>甜品</option>
+        </select>
+        <input type="file" accept="image/*" id="dishImage" />
+        <button onclick="addDish()">添加菜品</button>
+        <div id="dishList" class="gallery"></div>
+    </div>
+</div>
+
+<!-- 食材管理 -->
+<div id="ingredients" class="section">
+    <div class="container">
+        <h2>🥗 食材管理</h2>
+        <input id="ingName" placeholder="食材名称" />
+        <input id="ingAmount" type="number" min="1" value="1" />
+        <select id="ingUnit">
+            <option>个</option><option>克</option><option>千克</option><option>毫升</option><option>升</option>
+        </select>
+        <select id="ingCategory">
+            <option>蔬菜</option><option>肉类</option><option>调料</option><option>其他</option>
+        </select>
+        <button onclick="addIngredient()">添加食材</button>
+
+        <div id="ingList" class="ingredient-tags"></div>
+
+        <button onclick="saveAsTemplate()" style="background:#9c27b0;">保存为常备模板</button>
+        <button onclick="restoreTemplate()" style="background:#4caf50;">🛒 新买菜，恢复库存</button>
+
+        <div class="dashboard-section">
+            <button onclick="generateMenu()" style="background:#ff9800;">生成今日菜单</button>
+            <button onclick="cookDish()" style="background:#4caf50;">做菜完成，扣减库存</button>
+            <div id="menuResult2" style="margin-top:10px;font-weight:bold;"></div>
+        </div>
+    </div>
+</div>
+
+<script>
+const DISH_KEY = 'dish_gallery';
+const ING_KEY = 'ingredient_list';
+const TEMPLATE_KEY = 'ingredient_template';
+const HISTORY_KEY = 'cook_history';
+
+/* Tab 切换 */
+function switchTab(id) {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+    document.querySelector(`.tab[onclick*="${id}"]`).classList.add('active');
+    document.getElementById(id).classList.add('active');
+    if (id === 'dashboard') renderDashboard();
+    if (id === 'dishes') renderDishes();
+    if (id === 'ingredients') renderIngredients();
+}
+
+/* ===== 菜品 ===== */
+function getDishes() {
+    return JSON.parse(localStorage.getItem(DISH_KEY)) || [];
+}
+function renderDishes() {
+    const list = document.getElementById('dishList');
+    list.innerHTML = '';
+    getDishes().forEach((d, i) => {
+        list.innerHTML += `<div class="card"><img src="${d.img}"><button class="del" onclick="deleteDish(${i})">×</button></div>`;
+    });
+}
+function addDish() {
+    const file = dishImage.files[0];
+    if (!dishName.value.trim() || !file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+        const dishes = getDishes();
+        dishes.push({ name: dishName.value, category: dishCategory.value, img: reader.result });
+        localStorage.setItem(DISH_KEY, JSON.stringify(dishes));
+        renderDishes();
+        dishName.value = '';
+        dishImage.value = '';
+    };
+    reader.readAsDataURL(file);
+}
+function deleteDish(i) {
+    const dishes = getDishes();
+    dishes.splice(i, 1);
+    localStorage.setItem(DISH_KEY, JSON.stringify(dishes));
+    renderDishes();
+}
+
+/* ===== 食材 ===== */
+function getIngredients() {
+    return JSON.parse(localStorage.getItem(ING_KEY)) || [];
+}
+function saveIngredients(data) {
+    localStorage.setItem(ING_KEY, JSON.stringify(data));
+}
+function getTagClass(c) {
+    return c === '蔬菜' ? 'green' : c === '肉类' ? 'red' : c === '调料' ? 'gray' : 'blue';
+}
+function renderIngredients() {
+    const container = document.getElementById('ingList');
+    container.innerHTML = getIngredients().map((i, idx) => `
+        <span class="tag ${getTagClass(i.category)} ${i.selected?'selected':''} ${i.amount<=100&&i.unit==='克'?'warning':''}"
+              onclick="toggleSelect(${idx})">
+            ${i.name}×${i.amount}${i.unit}
+            <button class="tag-del" onclick="event.stopPropagation();deleteIngredient(${idx})">×</button>
+        </span>
+    `).join('');
+}
+function addIngredient() {
+    const list = getIngredients();
+    list.push({
+        name: ingName.value,
+        amount: +ingAmount.value,
+        unit: ingUnit.value,
+        category: ingCategory.value,
+        selected: false
+    });
+    saveIngredients(list);
+    renderIngredients();
+    ingName.value = '';
+    ingAmount.value = 1;
+}
+function deleteIngredient(i) {
+    const list = getIngredients();
+    list.splice(i, 1);
+    saveIngredients(list);
+    renderIngredients();
+}
+function toggleSelect(i) {
+    const list = getIngredients();
+    list[i].selected = !list[i].selected;
+    saveIngredients(list);
+    renderIngredients();
+}
+
+/* ===== 模板 ===== */
+function saveAsTemplate() {
+    localStorage.setItem(TEMPLATE_KEY, JSON.stringify(getIngredients()));
+    alert('已保存为常备模板');
+}
+function restoreTemplate() {
+    const tpl = JSON.parse(localStorage.getItem(TEMPLATE_KEY)) || [];
+    localStorage.setItem(ING_KEY, JSON.stringify(tpl));
+    renderIngredients();
+    alert('库存已恢复');
+}
+
+/* ===== 菜单 ===== */
+function generateMenu() {
+    const list = getIngredients().filter(i => i.selected);
+    const meats = list.filter(i => i.category === '肉类');
+    const veggies = list.filter(i => i.category === '蔬菜');
+    const r = meats.length && veggies.length
+        ? `推荐：${meats[Math.floor(Math.random()*meats.length)].name}炒${veggies[Math.floor(Math.random()*veggies.length)].name}`
+        : '请先勾选食材';
+    document.getElementById('menuResult').innerText = r;
+    document.getElementById('menuResult2').innerText = r;
+}
+function cookDish() {
+    const list = getIngredients();
+    const used = list.filter(i => i.selected);
+    if (!used.length) return alert('请先勾选食材');
+    used.forEach(u => {
+        const t = list.find(i => i.name===u.name && i.category===u.category);
+        if (t) t.amount = Math.max(0, t.amount - u.amount);
+    });
+    list.forEach(i => i.selected = false);
+    saveIngredients(list);
+    addCookHistory(document.getElementById('menuResult').innerText);
+    renderIngredients();
+    alert('库存已更新');
+}
+
+/* ===== 历史 ===== */
+function addCookHistory(name) {
+    const h = JSON.parse(localStorage.getItem(HISTORY_KEY)) || [];
+    h.unshift({ name, time: new Date().toLocaleString() });
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(h.slice(0,10)));
+}
+
+/* ===== 仪表盘 ===== */
+function renderDashboard() {
+    generateMenu();
+    const sl = document.getElementById('shoppingList');
+    const need = getIngredients().filter(i => i.amount<=100 && i.unit==='克');
+    sl.innerHTML = need.length ? need.map(i => `🛒 ${i.name}（剩${i.amount}${i.unit}）`).join('<br>') : '🎉 暂时不用买菜';
+
+    const rh = document.getElementById('recentDishes');
+    const h = JSON.parse(localStorage.getItem(HISTORY_KEY)) || [];
+    rh.innerHTML = h.length ? h.map(i => `🍽 ${i.name}<br><small>${i.time}</small>`).join('<hr>') : '暂无记录';
+}
+
+/* 初始化 */
+switchTab('dashboard');
+</script>
+
+</body>
+</html>
